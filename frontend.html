@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Email Analyzer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f6f8;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    form {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    textarea {
+      width: 100%;
+      height: 180px;
+      font-family: monospace;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #results {
+      max-width: 900px;
+      margin: 30px auto;
+      background: white;
+      border-radius: 6px;
+      padding: 20px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    ul, li {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .auth-item {
+      margin: 5px 0;
+    }
+    .suspicious {
+      color: red;
+      font-weight: bold;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f1f1f1;
+    }
+    a {
+      word-break: break-word;
+    }
+    #disclaimer {
+      max-width: 800px;
+      margin: 30px auto;
+      font-size: 12px;
+      color: #555;
+      background: #fff;
+      border-radius: 6px;
+      padding: 15px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.05);
+    }
+    #disclaimer h4 {
+      margin-top: 0;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>Email Analyzer</h1>
+  <form id="analyzeForm">
+    <textarea id="emailInput" placeholder="Paste raw email here..."></textarea>
+    <button type="submit">Analyze</button>
+  </form>
+
+  <div id="results"></div>
+
+  <script>
+    const form = document.getElementById("analyzeForm");
+    const resultsDiv = document.getElementById("results");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const emailText = document.getElementById("emailInput").value;
+      resultsDiv.innerHTML = "Analyzing…";
+
+      const res = await fetch("/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailText }),
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        resultsDiv.innerHTML = `<p style="color:red;">Error: ${data.error}</p>`;
+        return;
+      }
+
+      const check = (val) => val ? "✅" : "<span style='color:red;'>❌</span>";
+
+      let html = `
+        <h3>Authentication</h3>
+        <ul>
+          <li class="auth-item">SPF: ${check(data.auth.SPF)}</li>
+          <li class="auth-item">DKIM: ${check(data.auth.DKIM)}</li>
+          <li class="auth-item">DMARC: ${check(data.auth.DMARC)}</li>
+        </ul>
+
+        <h3>Sender Details</h3>
+        <ul>
+          <li>Sender: ${data.fields["Sender"]}</li>
+          <li>Reply-To: ${data.fields["Reply-To"]}</li>
+          <li>Message-ID: ${data.fields["Message-ID"]}</li>
+        </ul>
+
+        <h3>Domain Age</h3>
+        <ul>
+          <li>Domain: ${data.domain_age.domain}</li>
+          <li>Days Old: ${data.domain_age.age_days || "Unknown"}</li>
+          ${data.domain_age.warn ? "<li class='suspicious'>⚠️ Newly registered domain</li>" : ""}
+        </ul>
+
+        <h3>Redirect Links</h3>
+        <ul>
+          ${
+            data.redirect_links.length === 0
+              ? "<li>No links found</li>"
+              : data.redirect_links
+                  .map(
+                    (link) =>
+                      `<li class="${
+                        link.suspicious ? "suspicious" : ""
+                      }"><a href="${link.href}" target="_blank">${link.href}</a></li>`
+                  )
+                  .join("")
+          }
+        </ul>
+
+        <h3>Relay Hops</h3>
+        <table>
+          <tr>
+            <th>#</th>
+            <th>Timestamp</th>
+            <th>From</th>
+            <th>By</th>
+            <th>IP</th>
+            <th>Location</th>
+          </tr>
+          ${data.hops
+            .map(
+              (hop) => `
+                <tr>
+                  <td>${hop.index}</td>
+                  <td>${hop.timestamp || "—"}</td>
+                  <td>${hop.from || "—"}</td>
+                  <td>${hop.by || "—"}</td>
+                  <td>${hop.ip || "—"}</td>
+                  <td>${hop.city || ""}, ${hop.region || ""}, ${hop.country || ""}</td>
+                </tr>
+              `
+            )
+            .join("")}
+        </table>
+      `;
+
+      resultsDiv.innerHTML = html;
+    });
+  </script>
+
+  <!-- ✅ Disclaimer inserted here -->
+  <div id="disclaimer">
+    <h4>Disclaimer</h4>
+    <p>
+      This tool is provided for informational and educational purposes only. It does not guarantee detection of all phishing, scam, or malicious content. 
+      Use of this tool is at your own risk. The developer assumes no liability for any decisions or actions taken based on the tool's output.
+    </p>
+    <p>
+      This tool is not affiliated with or endorsed by any company, service provider, or law enforcement agency. By using this tool, you agree not to misuse it 
+      or rely solely on its findings without professional analysis.
+    </p>
+  </div>
+
+</body>
+</html>
